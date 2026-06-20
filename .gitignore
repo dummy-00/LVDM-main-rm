@@ -1,0 +1,45 @@
+# Runtime outputs and training artifacts
+/logs/
+/results/
+/temp/
+output.log
+nohup.out
+
+# Model weights, checkpoints, and partial downloads
+/models/
+*.ckpt
+*.pth
+*.pt
+*.safetensors
+*.onnx
+*.bin
+*.filepart
+
+# Python caches and local build metadata
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Virtual environments and local editor files
+.venv/
+venv/
+env/
+.env
+.env.*
+.vscode/
+.idea/
+
+# Local archives
+*.tar
+*.tar.gz
+*.zip
+
+# Nested repository metadata should not be committed as project files.
+**/.git/
+**/.git.bak/

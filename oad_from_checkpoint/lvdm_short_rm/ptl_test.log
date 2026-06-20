@@ -1,0 +1,53 @@
+18:58:18:INFO@seed.py:MainProcess - Global seed set to 23
+18:59:21:INFO@seed.py:MainProcess - Global seed set to 23
+18:59:25:INFO@trainer.py:MainProcess - GPU available: True, used: True
+18:59:25:INFO@trainer.py:MainProcess - TPU available: False, using: 0 TPU cores
+18:59:25:INFO@trainer.py:MainProcess - IPU available: False, using: 0 IPUs
+19:00:04:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:07:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:13:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:17:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:19:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:21:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:23:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:23:INFO@ddp.py:MainProcess - initializing ddp: GLOBAL_RANK: 0, MEMBER: 1/7
+19:00:44:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:44:INFO@ddp.py:MainProcess - initializing ddp: GLOBAL_RANK: 2, MEMBER: 3/7
+19:00:45:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:45:INFO@ddp.py:MainProcess - initializing ddp: GLOBAL_RANK: 1, MEMBER: 2/7
+19:00:46:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:46:INFO@ddp.py:MainProcess - initializing ddp: GLOBAL_RANK: 3, MEMBER: 4/7
+19:00:47:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:47:INFO@ddp.py:MainProcess - initializing ddp: GLOBAL_RANK: 4, MEMBER: 5/7
+19:00:50:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:50:INFO@ddp.py:MainProcess - initializing ddp: GLOBAL_RANK: 5, MEMBER: 6/7
+19:00:53:INFO@seed.py:MainProcess - Global seed set to 23
+19:00:53:INFO@ddp.py:MainProcess - initializing ddp: GLOBAL_RANK: 6, MEMBER: 7/7
+19:00:53:INFO@ddp.py:MainProcess - ----------------------------------------------------------------------------------------------------
+distributed_backend=nccl
+All DDP processes registered. Starting ddp with 7 processes
+----------------------------------------------------------------------------------------------------
+
+19:01:06:INFO@gpu.py:MainProcess - LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+19:01:06:INFO@gpu.py:MainProcess - LOCAL_RANK: 2 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+19:01:06:INFO@gpu.py:MainProcess - LOCAL_RANK: 4 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+19:01:06:INFO@gpu.py:MainProcess - LOCAL_RANK: 5 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+19:01:06:INFO@gpu.py:MainProcess - LOCAL_RANK: 3 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+19:01:06:INFO@gpu.py:MainProcess - LOCAL_RANK: 1 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+19:01:06:INFO@gpu.py:MainProcess - LOCAL_RANK: 6 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
+19:09:01:INFO@seed.py:MainProcess - Global seed set to 23
+19:09:05:INFO@trainer.py:MainProcess - GPU available: True, used: True
+19:09:05:INFO@trainer.py:MainProcess - TPU available: False, using: 0 TPU cores
+19:09:05:INFO@trainer.py:MainProcess - IPU available: False, using: 0 IPUs
+19:09:38:INFO@seed.py:MainProcess - Global seed set to 23
+19:09:42:INFO@trainer.py:MainProcess - GPU available: True, used: True
+19:09:42:INFO@trainer.py:MainProcess - TPU available: False, using: 0 TPU cores
+19:09:42:INFO@trainer.py:MainProcess - IPU available: False, using: 0 IPUs
+19:10:18:INFO@seed.py:MainProcess - Global seed set to 23
+19:10:18:INFO@ddp.py:MainProcess - initializing ddp: GLOBAL_RANK: 0, MEMBER: 1/1
+19:10:18:INFO@ddp.py:MainProcess - ----------------------------------------------------------------------------------------------------
+distributed_backend=nccl
+All DDP processes registered. Starting ddp with 1 processes
+----------------------------------------------------------------------------------------------------
+
+19:10:22:INFO@gpu.py:MainProcess - LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0,1,2,3,4,5,6,7]
