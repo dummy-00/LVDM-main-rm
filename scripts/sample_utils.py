@@ -21,13 +21,13 @@ def custom_to_pil(x):
 
 def custom_to_np(x):
     # saves the batch in adm style as in https://github.com/openai/guided-diffusion/blob/main/scripts/image_sample.py
-    sample = x.detach().cpu()
+    sample = x.detach().cpu().float()
     sample = ((sample + 1) * 127.5).clamp(0, 255).to(torch.uint8)
     if sample.dim() == 5:
         sample = sample.permute(0, 2, 3, 4, 1)
     else:
         sample = sample.permute(0, 2, 3, 1)
-    sample = sample.contiguous()
+    sample = sample.contiguous().numpy()
     return sample
 
 def save_args(save_dir, args):
@@ -121,11 +121,25 @@ def get_conditions(prompts, model, batch_size, cond_fps=None,):
 
 # ------------------------------------------------------------------------------------------
 def make_model_input_shape(model, batch_size, T=None):
-    image_size = [model.image_size, model.image_size] if isinstance(model.image_size, int) else model.image_size
+    image_size = [model.image_size, model.image_size] if isinstance(model.image_size, int) else list(model.image_size)
+    downsample = None
+    try:
+        downsample = model.first_stage_config.params.ddconfig.encoder.params.downsample
+    except AttributeError:
+        downsample = None
+    if downsample is not None:
+        if len(downsample) == 3:
+            if T is None:
+                T = getattr(model, "video_length", None) or model.model.diffusion_model.temporal_length
+            T = T // downsample[0]
+            image_size = [image_size[0] // downsample[1], image_size[1] // downsample[2]]
+        elif len(downsample) == 2:
+            image_size = [image_size[0] // downsample[0], image_size[1] // downsample[1]]
     C = model.model.diffusion_model.in_channels
     if T is None:
         T = model.model.diffusion_model.temporal_length
     shape = [batch_size, C, T, *image_size]
+    print(f"Sampling latent shape: {shape}")
     return shape
 
 # ------------------------------------------------------------------------------------------
@@ -167,18 +181,19 @@ def sample_batch(model, noise_shape, condition,
 # ------------------------------------------------------------------------------------------
 def torch_to_np(x):
     # saves the batch in adm style as in https://github.com/openai/guided-diffusion/blob/main/scripts/image_sample.py
-    sample = x.detach().cpu()
+    sample = x.detach().cpu().float()
     sample = ((sample + 1) * 127.5).clamp(0, 255).to(torch.uint8)
     if sample.dim() == 5:
         sample = sample.permute(0, 2, 3, 4, 1)
     else:
         sample = sample.permute(0, 2, 3, 1)
-    sample = sample.contiguous()
+    sample = sample.contiguous().numpy()
     return sample
 # ------------------------------------------------------------------------------------------
 def save_results(videos, save_dir, 
                  save_name="results", save_fps=8, save_mp4=True, 
-                 save_npz=False, save_mp4_sheet=False, save_jpg=False
+                 save_npz=False, save_mp4_sheet=False, save_jpg=False,
+                 save_frames=False,
                  ):
     if save_mp4:
         save_subdir = os.path.join(save_dir, "videos")
@@ -206,3 +221,18 @@ def save_results(videos, save_dir,
         npz_to_imgsheet_5d(videos, save_path, nrow=videos.shape[1])
         print(f'Successfully saved jpg sheet in {save_path}')
 
+    if save_frames:
+        save_subdir = os.path.join(save_dir, "frames", save_name)
+        os.makedirs(save_subdir, exist_ok=True)
+        for video_idx in range(videos.shape[0]):
+            video = videos[video_idx]
+            video_subdir = save_subdir
+            if videos.shape[0] > 1:
+                video_subdir = os.path.join(save_subdir, f"sample{video_idx:03d}")
+                os.makedirs(video_subdir, exist_ok=True)
+            for frame_idx in range(video.shape[0]):
+                Image.fromarray(video[frame_idx]).save(
+                    os.path.join(video_subdir, f"frame{frame_idx:04d}.jpg"),
+                    quality=95,
+                )
+        print(f'Successfully saved frames in {save_subdir}')

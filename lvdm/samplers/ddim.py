@@ -72,6 +72,7 @@ class DDIMSampler(object):
                schedule_verbose=False,
                x_T=None,
                log_every_t=100,
+               store_intermediates=True,
                unconditional_guidance_scale=1.,
                unconditional_conditioning=None,
                postprocess_fn=None,
@@ -117,6 +118,7 @@ class DDIMSampler(object):
                                                     corrector_kwargs=corrector_kwargs,
                                                     x_T=x_T,
                                                     log_every_t=log_every_t,
+                                                    store_intermediates=store_intermediates,
                                                     unconditional_guidance_scale=unconditional_guidance_scale,
                                                     unconditional_conditioning=unconditional_conditioning,
                                                     postprocess_fn=postprocess_fn,
@@ -132,6 +134,7 @@ class DDIMSampler(object):
                       x_T=None, ddim_use_original_steps=False,
                       callback=None, timesteps=None, quantize_denoised=False,
                       mask=None, x0=None, img_callback=None, log_every_t=100,
+                      store_intermediates=True,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
                       unconditional_guidance_scale=1., unconditional_conditioning=None,
                       postprocess_fn=None,sample_noise=None,cond_fn=None,
@@ -151,7 +154,10 @@ class DDIMSampler(object):
         elif timesteps is not None and not ddim_use_original_steps:
             subset_end = int(min(timesteps / self.ddim_timesteps.shape[0], 1) * self.ddim_timesteps.shape[0]) - 1
             timesteps = self.ddim_timesteps[:subset_end]
-        intermediates = {'x_inter': [img], 'pred_x0': [img]}
+        intermediates = {'x_inter': [], 'pred_x0': []}
+        if store_intermediates:
+            intermediates['x_inter'].append(img)
+            intermediates['pred_x0'].append(img)
         time_range = reversed(range(0,timesteps)) if ddim_use_original_steps else np.flip(timesteps)
         total_steps = timesteps if ddim_use_original_steps else timesteps.shape[0]
         if verbose:
@@ -187,7 +193,7 @@ class DDIMSampler(object):
             if callback: callback(i)
             if img_callback: img_callback(pred_x0, i)
 
-            if index % log_every_t == 0 or index == total_steps - 1:
+            if store_intermediates and (index % log_every_t == 0 or index == total_steps - 1):
                 intermediates['x_inter'].append(img)
                 intermediates['pred_x0'].append(pred_x0)
 

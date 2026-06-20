@@ -12,7 +12,7 @@ import torch.distributed as dist
 from pytorch_lightning import seed_everything
 
 from lvdm.samplers.ddim import DDIMSampler
-from lvdm.utils.common_utils import torch_to_np, str2bool
+from lvdm.utils.common_utils import str2bool
 from lvdm.utils.dist_utils import setup_dist, gather_data
 from scripts.sample_utils import (
     load_model, 
@@ -20,6 +20,7 @@ from scripts.sample_utils import (
     make_model_input_shape, 
     sample_batch,
     save_results, 
+    torch_to_np,
     )
 from torch.cuda.amp import autocast
 
@@ -38,18 +39,21 @@ def get_parser():
     # sampling args
     parser.add_argument("--n_samples", type=int, help="how many samples for each text prompt", default=2)
     parser.add_argument("--batch_size", type=int, help="video batch size for sampling", default=1)
-    parser.add_argument("--sample_type", type=str, help="ddpm or ddim", default="ddpm", choices=["ddpm", "ddim"])
+    parser.add_argument("--decode_frame_bs", type=int, help="frame batch size for framewise decoding", default=1)
+    parser.add_argument("--sample_type", type=str, help="ddpm or ddim", default="ddim", choices=["ddpm", "ddim"])
     parser.add_argument("--ddim_steps", type=int, help="ddim sampling -- number of ddim denoising timesteps", default=50)
     parser.add_argument("--eta", type=float, help="ddim sampling -- eta (0.0 yields deterministic sampling, 1.0 yields random sampling)", default=1.0)
     parser.add_argument("--seed", type=int, default=None, help="fix a seed for randomness (If you want to reproduce the sample results)")
     parser.add_argument("--num_frames", type=int, default=None, help="number of input frames")
     parser.add_argument("--show_denoising_progress", action='store_true', default=False, help="whether show denoising progress during sampling one batch",)
     parser.add_argument("--uncond_scale", type=float, default=15.0, help="uncondition guidance scale")
+    parser.add_argument("--low_vram", type=str2bool, default=True, help="save each batch immediately and avoid keeping sampler intermediates")
     # saving args
-    parser.add_argument("--save_mp4", type=str2bool, default=True, help="whether save samples in separate mp4 files", choices=["True", "true", "False", "false"])
+    parser.add_argument("--save_mp4", type=str2bool, default=True, help="whether save samples in separate mp4 files")
     parser.add_argument("--save_mp4_sheet", action='store_true', default=False, help="whether save samples in mp4 file",)
     parser.add_argument("--save_npz", action='store_true', default=False, help="whether save samples in npz file",)
     parser.add_argument("--save_jpg", action='store_true', default=False, help="whether save samples in jpg file",)
+    parser.add_argument("--save_frames", action='store_true', default=False, help="whether save each generated frame as a jpg file",)
     parser.add_argument("--save_fps", type=int, default=8, help="fps of saved mp4 videos",)
     return parser
 
@@ -58,15 +62,67 @@ def get_parser():
 def sample(model, noise_shape, n_iters, ddp=False, **kwargs):
     all_videos = []
     for _ in trange(n_iters, desc="Sampling Batches (unconditional)"):
-        samples = sample_batch(model, noise_shape, condition=None, **kwargs)
-        samples = model.decode_first_stage(samples)
+        samples = sample_batch(
+            model,
+            noise_shape,
+            condition=None,
+            sample_type=kwargs.get("sample_type", "ddim"),
+            sampler=kwargs.get("sampler", None),
+            ddim_steps=kwargs.get("ddim_steps", None),
+            eta=kwargs.get("eta", None),
+            denoising_progress=kwargs.get("show_denoising_progress", False),
+        )
+        samples = model.decode_first_stage(samples, decode_bs=kwargs.get("decode_frame_bs", 1), return_cpu=True)
         if ddp: # gather samples from multiple gpus
             data_list = gather_data(samples, return_np=False)
             all_videos.extend([torch_to_np(data) for data in data_list])
         else:
             all_videos.append(torch_to_np(samples))
+        del samples
+        torch.cuda.empty_cache()
     all_videos = np.concatenate(all_videos, axis=0)
     return all_videos
+
+@torch.no_grad()
+def sample_and_save_low_vram(model, noise_shape, n_iters, opt, sampler=None, save_name="results"):
+    saved = 0
+    for batch_idx in trange(n_iters, desc="Sampling Batches (unconditional)"):
+        samples_latent = sample_batch(
+            model,
+            noise_shape,
+            condition=None,
+            sample_type=opt.sample_type,
+            sampler=sampler,
+            ddim_steps=opt.ddim_steps,
+            eta=opt.eta,
+            denoising_progress=opt.show_denoising_progress,
+            store_intermediates=False,
+        )
+        samples = model.decode_first_stage(
+            samples_latent,
+            decode_bs=opt.decode_frame_bs,
+            return_cpu=True,
+        )
+        videos = torch_to_np(samples)
+        del samples_latent, samples
+        torch.cuda.empty_cache()
+
+        for local_idx in range(videos.shape[0]):
+            if saved >= opt.n_samples:
+                break
+            save_results(
+                videos[local_idx:local_idx + 1],
+                opt.save_dir,
+                save_name=f"{save_name}_{saved:03d}",
+                save_fps=opt.save_fps,
+                save_mp4=opt.save_mp4,
+                save_npz=opt.save_npz,
+                save_mp4_sheet=opt.save_mp4_sheet,
+                save_jpg=opt.save_jpg,
+                save_frames=opt.save_frames,
+            )
+            saved += 1
+        del videos
 
 # ------------------------------------------------------------------------------------------
 def main():
@@ -100,31 +156,39 @@ def main():
     model, _, _ = load_model(config, opt.ckpt_path)
     model.half()
     ddim_sampler = DDIMSampler(model) if opt.sample_type == "ddim" else None
-    '''
+
     # sample
     start = time.time()
     noise_shape = make_model_input_shape(model, opt.batch_size, T=opt.num_frames)
     ngpus = 1 if not opt.ddp else dist.get_world_size()
     n_iters = math.ceil(opt.n_samples / (ngpus * opt.batch_size))
-    samples = sample(model, noise_shape, n_iters, sampler=ddim_sampler, **vars(opt))
-    assert(samples.shape[0] >= opt.n_samples)
-    '''
-    # sample
-    start = time.time()
-    noise_shape = make_model_input_shape(model, opt.batch_size, T=opt.num_frames)
-    ngpus = 1 if not opt.ddp else dist.get_world_size()
-    n_iters = math.ceil(opt.n_samples / (ngpus * opt.batch_size))
+    save_name = f"seed{seed:05d}" if opt.seed is not None else "results"
+
+    if opt.low_vram and not opt.ddp:
+        with torch.no_grad():
+            with autocast():
+                sample_and_save_low_vram(model, noise_shape, n_iters, opt, sampler=ddim_sampler, save_name=save_name)
+        print("Finish sampling!")
+        print(f"Run time = {(time.time() - start):.2f} seconds")
+        return
     
-    # 使用 autocast 自动处理 Half 和 Float 的转换
     with torch.no_grad():
         with autocast():
             samples = sample(model, noise_shape, n_iters, sampler=ddim_sampler, **vars(opt))
 
     # save
     if (opt.ddp and dist.get_rank() == 0) or (not opt.ddp):
-        if opt.seed is not None:
-            save_name = f"seed{seed:05d}"
-        save_results(samples, opt.save_dir, save_name=save_name, save_fps=opt.save_fps)
+        save_results(
+            samples,
+            opt.save_dir,
+            save_name=save_name,
+            save_fps=opt.save_fps,
+            save_mp4=opt.save_mp4,
+            save_npz=opt.save_npz,
+            save_mp4_sheet=opt.save_mp4_sheet,
+            save_jpg=opt.save_jpg,
+            save_frames=opt.save_frames,
+        )
     print("Finish sampling!")
     print(f"Run time = {(time.time() - start):.2f} seconds")
 

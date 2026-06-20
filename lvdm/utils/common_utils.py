@@ -71,7 +71,7 @@ def shift_dim(x, src_dim=-1, dest_dim=-1, make_contiguous=True):
 
 
 def torch_to_np(x):
-    sample = x.detach().cpu()
+    sample = x.detach().cpu().float()
     sample = ((sample + 1) * 127.5).clamp(0, 255).to(torch.uint8)
     if sample.dim() == 5:
         sample = sample.permute(0, 2, 3, 4, 1)
