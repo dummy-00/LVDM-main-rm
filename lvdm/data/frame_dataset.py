@@ -1,8 +1,10 @@
 import os
 import random
 import re
+import json
 from PIL import ImageFile
 from PIL import Image
+from PIL import ImageDraw
 import pickle
 import torch
 import torch.utils.data as data
@@ -47,6 +49,16 @@ def default_loader(path):
 
 def is_image_file(filename):
     return any(filename.endswith(extension) for extension in IMG_EXTENSIONS)
+
+def natural_key(s):
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
+def height_index_from_frame_name(fname, fallback):
+    stem = os.path.splitext(os.path.basename(fname))[0]
+    digits = ''.join(ch for ch in stem if ch.isdigit())
+    if digits == '':
+        return fallback
+    return int(digits)
 
 def find_classes(dir):
     cache_path = os.path.join(dir, '.classes_cache.pkl')
@@ -184,7 +196,7 @@ def make_dataset_ucf(dir, nframes, class_to_idx, frame_stride=1, clip_step=None)
                 # 为了速度，这里改为只获取文件名列表
                 try:
                     fnames = [f for f in os.listdir(video_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-                    fnames.sort() # 对单个视频内的帧排序开销较小
+                    fnames.sort(key=natural_key) # 对单个视频内的帧排序开销较小
                 except Exception:
                     continue # 如果文件夹读取出错，直接跳过
                 
@@ -242,6 +254,43 @@ def load_and_transform_frames(frame_list, loader, img_transform=None):
         clip.append(img)
     return clip, labels[0] # all frames have same label..
 
+def render_building_condition_frames(frame_list, condition_root, img_transform=None):
+    first_frame = frame_list[0]
+    if isinstance(first_frame, dict):
+        first_path = first_frame["img_path"]
+    else:
+        first_path = first_frame[0]
+
+    clip_name = os.path.basename(os.path.dirname(first_path))
+    condition_id = clip_name.split('_', 1)[0]
+    condition_path = os.path.join(condition_root, f"{condition_id}.json")
+    with open(condition_path, "r") as f:
+        buildings = json.load(f)
+
+    cond_frames = []
+    for i, frame in enumerate(frame_list):
+        if isinstance(frame, dict):
+            frame_path = frame["img_path"]
+        else:
+            frame_path = frame[0]
+
+        height_idx = height_index_from_frame_name(frame_path, i + 1)
+        img = Image.new("L", (256, 256), 0)
+        draw = ImageDraw.Draw(img)
+        for polygon, height_values in buildings:
+            height = float(height_values[0])
+            if height < height_idx:
+                continue
+            draw.polygon([tuple(point) for point in polygon], fill=255)
+
+        img = img.convert("RGB")
+        if img_transform is not None:
+            img = img_transform(img)
+        img = img.view(img.size(0), 1, img.size(1), img.size(2))
+        cond_frames.append(img)
+
+    return torch.cat(cond_frames, 1)
+
 class VideoFrameDataset(data.Dataset):
     def __init__(self,
         data_root,
@@ -254,6 +303,8 @@ class VideoFrameDataset(data.Dataset):
         temporal_transform="",
         frame_stride=1,
         clip_step=None,
+        condition_root=None,
+        condition_key="condition",
         ):
         
         self.loader = default_loader
@@ -263,6 +314,8 @@ class VideoFrameDataset(data.Dataset):
         self.spatial_transform = spatial_transform
         self.frame_stride = frame_stride
         self.dataset_name = dataset_name
+        self.condition_root = condition_root
+        self.condition_key = condition_key
 
         assert(subset_split in ["train", "test", "all", ""]) # "" means no subset_split directory.
         assert(self.temporal_transform in ["", "rand_clips"])
@@ -350,11 +403,18 @@ class VideoFrameDataset(data.Dataset):
         frames, labels = load_and_transform_frames(clip, self.loader, self.img_transform)
         assert(len(frames) == self.video_length), f'current clip_length={len(frames)}, target clip_length={self.video_length}, {clip}'
         frames = torch.cat(frames, 1) # c,t,h,w
+        condition = None
+        if self.condition_root is not None:
+            condition = render_building_condition_frames(clip, self.condition_root, self.img_transform)
         if self.video_transform is not None:
             frames = self.video_transform(frames)
+            if condition is not None:
+                condition = self.video_transform(condition)
         
         example = dict()
         example["image"] = frames
+        if condition is not None:
+            example[self.condition_key] = condition
         if labels is not None and self.dataset_name == 'UCF-101':
             example["caption"] = labels["class_caption"]
             example["class_label"] = labels["class_index"]

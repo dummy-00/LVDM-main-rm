@@ -484,7 +484,8 @@ if __name__ == "__main__":
         if 'accumulate_grad_batches' in lightning_config.trainer:
             accumulate_grad_batches = lightning_config.trainer.accumulate_grad_batches
             # adjust the log batch freq to the actual forward steps (not the optimize step)
-            lightning_config.callbacks.image_logger.params.batch_frequency = lightning_config.callbacks.image_logger.params.batch_frequency / accumulate_grad_batches
+            if "image_logger" in lightning_config.callbacks:
+                lightning_config.callbacks.image_logger.params.batch_frequency = lightning_config.callbacks.image_logger.params.batch_frequency / accumulate_grad_batches
         else:
             accumulate_grad_batches = 1
         print(f"accumulate_grad_batches = {accumulate_grad_batches}")

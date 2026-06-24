@@ -1,21 +1,19 @@
 
-PROJ_ROOT="logs/lvdm_short "                      # root directory for saving experiment logs
-EXPNAME="lvdm_short_rm"          # experiment name 
+PROJ_ROOT="logs/lvdm_short"                      # root directory for saving experiment logs
+EXPNAME="lvdm_short_rm_building"          # experiment name 
 DATADIR="/home/plj/home/DataDisk/plj/lvdm"  # dataset directory
 AEPATH="/home/plj/LVDM-main/models/2026-04-01T20-01-16_ae/checkpoints/last.ckpt"    # pretrained video autoencoder checkpoint
 
-CONFIG="configs/lvdm_short/sky.yaml"
+CONFIG="configs/lvdm_short/sky_building.yaml"
 # OR CONFIG="configs/videoae/ucf.yaml"
 # OR CONFIG="configs/videoae/taichi.yaml"
-CKPTPATH="/home/plj/LVDM-main/logs/lvdm_short/lvdm_short_rm/checkpoints/epoch=0002-step=041324.ckpt" 
 # run
 export TOKENIZERS_PARALLELISM=false
 python main.py \
 --base $CONFIG \
--v   --gpu ,7 \
+-t   --gpu 6,7 \
 --name $EXPNAME \
 --logdir $PROJ_ROOT \
--load_from_checkpoint $CKPTPATH \
 --auto_resume True \
 lightning.trainer.num_nodes=1 \
 data.params.train.params.data_root=$DATADIR \

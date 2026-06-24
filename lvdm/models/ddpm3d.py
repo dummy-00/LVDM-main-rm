@@ -665,6 +665,8 @@ class LatentDiffusion(DDPM):
                     xc = batch[cond_key]
                 elif cond_key == 'class_label':
                     xc = batch
+                elif cond_key in batch and isinstance(batch[cond_key], torch.Tensor):
+                    xc = batch[cond_key]
                 else:
                     raise NotImplementedError
             else:
