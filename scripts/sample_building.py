@@ -34,6 +34,8 @@ def get_parser():
     parser.add_argument("--building_id", type=str, default=None)
     parser.add_argument("--building_json", type=str, default=None)
     parser.add_argument("--building_root", type=str, default="/home/plj/buildings")
+    parser.add_argument("--view_condition_dir", type=str, default=None)
+    parser.add_argument("--view_condition_root", type=str, default=None)
     parser.add_argument("--gpu_id", type=int, default=0)
     parser.add_argument("--n_samples", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=1)
@@ -53,7 +55,7 @@ def get_parser():
     return parser
 
 
-def render_building_condition(building_json, num_frames, resolution=256):
+def render_building_condition(building_json, num_frames, resolution=256, view_condition_dir=None):
     with open(building_json, "r") as f:
         buildings = json.load(f)
 
@@ -70,7 +72,15 @@ def render_building_condition(building_json, num_frames, resolution=256):
             if height < height_idx:
                 continue
             draw.polygon([tuple(point) for point in polygon], fill=255)
-        frame = to_tensor(img.convert("RGB")).view(3, 1, resolution, resolution)
+        frame = to_tensor(img.convert("L").convert("RGB"))[:1]
+        frame = frame.view(1, 1, resolution, resolution)
+        if view_condition_dir is not None:
+            view_path = os.path.join(view_condition_dir, f"h{height_idx}.png")
+            if not os.path.isfile(view_path):
+                raise FileNotFoundError(f"Missing view condition frame: {view_path}")
+            view_frame = to_tensor(Image.open(view_path).convert("L").convert("RGB"))[:1]
+            view_frame = view_frame.view(1, 1, resolution, resolution)
+            frame = torch.cat([frame, view_frame], dim=0)
         frames.append(frame)
     return torch.cat(frames, dim=1)
 
@@ -84,7 +94,11 @@ def get_building_condition(model, opt):
     else:
         raise ValueError("Provide --building_id or --building_json")
 
-    condition = render_building_condition(building_json, opt.num_frames)
+    view_condition_dir = opt.view_condition_dir
+    if view_condition_dir is None and opt.view_condition_root is not None and opt.building_id is not None:
+        view_condition_dir = os.path.join(opt.view_condition_root, opt.building_id)
+
+    condition = render_building_condition(building_json, opt.num_frames, view_condition_dir=view_condition_dir)
     condition = condition.unsqueeze(0).repeat(opt.batch_size, 1, 1, 1, 1).to(model.device)
     condition = condition.to(next(model.cond_stage_model.parameters()).dtype)
     c = model.get_learned_conditioning(condition)
@@ -132,14 +146,13 @@ def main():
     opt, unknown = parser.parse_known_args()
     os.makedirs(opt.save_dir, exist_ok=True)
     save_args(opt.save_dir, opt)
-    os.environ["CUDA_VISIBLE_DEVICES"] = f"{opt.gpu_id}"
     if opt.seed is not None:
         seed_everything(opt.seed)
 
     config = OmegaConf.load(opt.config_path)
     cli = OmegaConf.from_dotlist(unknown)
     config = OmegaConf.merge(config, cli)
-    model, _, _ = load_model(config, opt.ckpt_path)
+    model, _, _ = load_model(config, opt.ckpt_path, gpu_id=opt.gpu_id)
     model.half()
     sampler = DDIMSampler(model) if opt.sample_type == "ddim" else None
 

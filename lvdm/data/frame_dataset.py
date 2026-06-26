@@ -254,12 +254,15 @@ def load_and_transform_frames(frame_list, loader, img_transform=None):
         clip.append(img)
     return clip, labels[0] # all frames have same label..
 
+def frame_path_from_item(frame):
+    if isinstance(frame, dict):
+        return frame["img_path"]
+    return frame[0]
+
+
 def render_building_condition_frames(frame_list, condition_root, img_transform=None):
     first_frame = frame_list[0]
-    if isinstance(first_frame, dict):
-        first_path = first_frame["img_path"]
-    else:
-        first_path = first_frame[0]
+    first_path = frame_path_from_item(first_frame)
 
     clip_name = os.path.basename(os.path.dirname(first_path))
     condition_id = clip_name.split('_', 1)[0]
@@ -269,10 +272,7 @@ def render_building_condition_frames(frame_list, condition_root, img_transform=N
 
     cond_frames = []
     for i, frame in enumerate(frame_list):
-        if isinstance(frame, dict):
-            frame_path = frame["img_path"]
-        else:
-            frame_path = frame[0]
+        frame_path = frame_path_from_item(frame)
 
         height_idx = height_index_from_frame_name(frame_path, i + 1)
         img = Image.new("L", (256, 256), 0)
@@ -283,10 +283,33 @@ def render_building_condition_frames(frame_list, condition_root, img_transform=N
                 continue
             draw.polygon([tuple(point) for point in polygon], fill=255)
 
-        img = img.convert("RGB")
+        img = img.convert("L").convert("RGB")
         if img_transform is not None:
             img = img_transform(img)
-        img = img.view(img.size(0), 1, img.size(1), img.size(2))
+        img = img[:1].view(1, 1, img.size(1), img.size(2))
+        cond_frames.append(img)
+
+    return torch.cat(cond_frames, 1)
+
+
+def render_view_condition_frames(frame_list, view_condition_root, img_transform=None):
+    first_path = frame_path_from_item(frame_list[0])
+    clip_name = os.path.basename(os.path.dirname(first_path))
+    view_dir = os.path.join(view_condition_root, clip_name)
+    if not os.path.isdir(view_dir):
+        raise FileNotFoundError(f"Missing view condition directory: {view_dir}")
+
+    cond_frames = []
+    for i, frame in enumerate(frame_list):
+        frame_path = frame_path_from_item(frame)
+        height_idx = height_index_from_frame_name(frame_path, i + 1)
+        path = os.path.join(view_dir, f"h{height_idx}.png")
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Missing view condition frame: {path}")
+        img = Image.open(path).convert("L").convert("RGB")
+        if img_transform is not None:
+            img = img_transform(img)
+        img = img[:1].view(1, 1, img.size(1), img.size(2))
         cond_frames.append(img)
 
     return torch.cat(cond_frames, 1)
@@ -304,6 +327,7 @@ class VideoFrameDataset(data.Dataset):
         frame_stride=1,
         clip_step=None,
         condition_root=None,
+        view_condition_root=None,
         condition_key="condition",
         ):
         
@@ -315,6 +339,7 @@ class VideoFrameDataset(data.Dataset):
         self.frame_stride = frame_stride
         self.dataset_name = dataset_name
         self.condition_root = condition_root
+        self.view_condition_root = view_condition_root
         self.condition_key = condition_key
 
         assert(subset_split in ["train", "test", "all", ""]) # "" means no subset_split directory.
@@ -406,6 +431,9 @@ class VideoFrameDataset(data.Dataset):
         condition = None
         if self.condition_root is not None:
             condition = render_building_condition_frames(clip, self.condition_root, self.img_transform)
+            if self.view_condition_root is not None:
+                view_condition = render_view_condition_frames(clip, self.view_condition_root, self.img_transform)
+                condition = torch.cat([condition, view_condition], dim=0)
         if self.video_transform is not None:
             frames = self.video_transform(frames)
             if condition is not None:
